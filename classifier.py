@@ -8,6 +8,7 @@ import pandas as pd
 import processor
 import time
 
+from operator import itemgetter
 from processor import process_url
 
 # Machine Learning Algorithms
@@ -105,36 +106,74 @@ def create_classifier(path, model, **kwargs):
 class VoteClassifier():
     def __init__(self, classifiers):
         self._classifiers = classifiers
+        self._cm = {}
+
 
     def fit(self, train_X, train_y):
         for clf in self._classifiers:
             clf.fit(train_X, train_y)
 
+
+    def confusion_matrix(self, test_X, test_y):
+        for clf in self._classifiers:
+            predict = clf.predict(test_X)
+            self._cm[type(clf).__name__] = confusion_matrix(test_y, predict)
+
+
     def vote(self, X):
         votes = []
         for clf in self._classifiers:
             vote = clf.predict(X)
-            votes.append(vote)
+            votes.append(self.confidence(type(clf).__name__, vote))
 
-        # http://stackoverflow.com/questions/1518522/python-most-common-element-in-a-list
-        winner = max(votes, key=votes.count)
-        conf = self.confidence(winner, votes)
-        return int(winner), conf
+        # print votes
+        winner = self.find_winner(votes)
+        return winner
 
-
-    # def confidence(self):
-    #     test = dataset.from_npy(path, 'test.npy')
-    #     test_X, test_y = test[:, :-1], test[:, -1]
-    #
-    #     for clf in voter._classifiers:
-    #         print type(clf).__name__
-    #         cm = confusion_matrix(test_y, clf.predict(test_X))
-    #     pass
+        # # http://stackoverflow.com/questions/1518522/python-most-common-element-in-a-list
+        # winner = max(votes, key=votes.count)
+        # conf = self.confidence(winner, votes)
+        # return int(winner), conf
 
 
-    def confidence(self, winner, votes):
-        win_count = votes.count(winner)
-        return float(win_count) / len(votes)
+    def confidence(self, clf_name, vote):
+        cm = self._cm[clf_name]
+        if vote == 0:
+            correct = cm[0][0] / float(sum(cm[0]))
+            incorrect = cm[1][0] / float(sum(cm[1]))
+            confidence = correct / sum([correct, incorrect])
+        else:
+            correct = cm[1][1] / float(sum(cm[1]))
+            incorrect = cm[0][1] / float(sum(cm[0]))
+            confidence = correct / sum([correct, incorrect])
+        return (vote, confidence)
+
+
+    # def confidence(self, winner, votes):
+    #     win_count = votes.count(winner)
+    #     return float(win_count) / len(votes)
+
+
+    def find_winner(self, votes):
+        """
+        Averages the confidence of each classifier's vote.
+        Returns the vote with the higher average along with its correlated confidence.
+        """
+        tally = {0:[], 1:[]}
+        for vote in votes:
+            if vote[0] == 1:
+                tally[0].append(vote[1])
+                tally[1].append(1 - vote[1])  # Appends the probability that the vote is the opposite classification
+            else:
+                tally[1].append(vote[1])
+                tally[0].append(1 - vote[1])
+        conf_0 = sum(tally[0]) / len(tally[0])
+        conf_1 = sum(tally[1]) / len(tally[1])
+
+        return (0, conf_0) if conf_0 > conf_1 else (1, conf_1)
+        # http://stackoverflow.com/questions/13145368/find-the-maximum-value-in-a-list-of-tuples-in-python
+        # winner = max(votes, key=itemgetter(1))
+        # return winner
 
 
 def create_voter():
@@ -169,29 +208,30 @@ def controller(folder):
 
 if __name__ == '__main__':
     # controller('Lexical')
-    controller('Trial_03')
+    # controller('Trial_03')
     trial = 'Trial_03'
     # trial = 'Lexical'
     path = os.path.join(os.path.expanduser('~'), 'OneDrive\\RPI\\Summer Project\\URL Classifier\\Dataset', trial)
 
-    voter = create_voter()
+    # voter = create_voter()
+    #
+    # train = dataset.from_npy(path, 'train.npy')
+    # train_X, train_y = train[:, :-1], train[:, -1]
+    # voter.fit(train_X, train_y)
 
-    train = dataset.from_npy(path, 'train.npy')
-    train_X, train_y = train[:, :-1], train[:, -1]
-    voter.fit(train_X, train_y)
-
-    save_voter(voter, path)
+    # save_voter(voter, path)
 
     voter = load_voter(path)
     test = dataset.from_npy(path, 'test.npy')
     test_X, test_y = test[:, :-1], test[:, -1]
+    voter.confusion_matrix(test_X, test_y)
 
-    for clf in voter._classifiers:
-        print type(clf).__name__
-        cm = confusion_matrix(test_y, clf.predict(test_X))
-        plot_confusion_matrix(cm)
-        plt.draw()
-
+    # for clf in voter._classifiers:
+    #     print type(clf).__name__
+    #     cm = confusion_matrix(test_y, clf.predict(test_X))
+    #     plot_confusion_matrix(cm)
+    #     plt.draw()
+    #
     test_urls = [
         'https://www.youtube.com/watch?v=4WM6hB7l4Lc&list=PLQVvvaa0QuDd0flgGphKCej-9jp-QdzZ3&index=12&feature=iv&src_vid=81ZGOib7DTk&annotation_id=annotation_1856532697',
         'http://ld.mediaget.com/index.php?l=ru&amp;fu=http:/www.playground.ru/download/?cheat=grand_theft_auto_4_gta_iv_episodes_from_liberty_city_eflc_sohranenie_100-41709&amp;r=playground.ru&amp;f=grand_theft_auto_4_gta_iv_episodes_from_liberty_city_eflc__&%23x421;&%23x43e;&%23x445;&%23x440;&%23x430;&%23x43d;&%23x435;&%23x43d;&%23x438;&%23x435;_100%25',
@@ -199,7 +239,9 @@ if __name__ == '__main__':
         'http://www.ezthemes.com/site_advertisers/extrafindWD.exe']
     for test_url in test_urls:
         processed_url = process_url(test_url).values()
-        winner, conf = voter.vote(processed_url)
-        print 'Classification:', 'Malicious' if winner == 1 else 'Benign', 'Confidence:', conf * 100
-
-    plt.show()
+        print voter.vote(processed_url)
+        # break
+        # winner, conf = voter.vote(processed_url)
+        # print 'Classification:', 'Malicious' if winner == 1 else 'Benign', 'Confidence:', conf * 100
+    #
+    # plt.show()
