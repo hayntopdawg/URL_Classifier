@@ -1,5 +1,6 @@
 import Tkinter
 import os
+import dataset
 from classifier import load_voter
 from processor import process_url
 
@@ -36,16 +37,19 @@ class URL_Class_tk(Tkinter.Tk):
         self.entry.grid(column=0, row=0, sticky='EW')
         # <Return> event handler
         self.entry.bind("<Return>", self.OnPressEnter)
-        self.entryVariable.set(u"Enter text here.")
+        self.entryVariable.set(u"Enter URL here.")
 
         # Load classifier (Choose a path where the voter is saved)
         path = os.path.join(os.path.expanduser('~'), 'OneDrive\\RPI\\Summer Project\\URL Classifier\\Dataset\\Trial_03')
         self.voter = load_voter(path)
+        test = dataset.from_npy(path, 'test.npy')
+        test_X, test_y = test[:, :-1], test[:, -1]
+        self.voter.confusion_matrix(test_X, test_y)
 
         ### Button ###
         # Note that in this case, we do not keep a reference to the button
         # (because we will not read or alter its value later)
-        button = Tkinter.Button(self, text=u"Click me!",
+        button = Tkinter.Button(self, text=u"Submit",
                                 command=self.OnButtonClick)
         button.grid(column=1, row=0)
 
@@ -55,7 +59,7 @@ class URL_Class_tk(Tkinter.Tk):
         self.label = Tkinter.Label(self, textvariable=self.labelVariable,
                                    anchor="w", fg="white", bg="blue")
         self.label.grid(column=0, row=1, columnspan=2, sticky='EW')
-        self.labelVariable.set(u"Hello!")
+        self.labelVariable.set(u"Welcome to URL Classifier!")
 
         # Enable resizing
         self.grid_columnconfigure(0,weight=1)
@@ -72,16 +76,24 @@ class URL_Class_tk(Tkinter.Tk):
         url = self.entryVariable.get()
         try:
             processed_url = process_url(url).values()
-            pred, conf = self.voter.vote(processed_url)
+            (pred, conf) = self.voter.vote(processed_url)
             url_class = "Malicious" if pred == 1 else "Benign"
-            self.labelVariable.set("URL Classified as " + url_class + ", Confidence: " + str(conf * 100) + "%")
+            self.labelVariable.set("URL Classified as {}, Confidence: {:.4f}%".format(url_class, conf * 100))
         except:
             self.labelVariable.set("Not a valid URL")
         self.entry.focus_set()
         self.entry.selection_range(0, Tkinter.END)
 
     def OnPressEnter(self,event):
-        self.labelVariable.set( self.entryVariable.get()+" (You pressed ENTER)" )
+        # self.labelVariable.set( self.entryVariable.get()+" (You pressed ENTER)" )
+        url = self.entryVariable.get()
+        try:
+            processed_url = process_url(url).values()
+            (pred, conf) = self.voter.vote(processed_url)
+            url_class = "Malicious" if pred == 1 else "Benign"
+            self.labelVariable.set("URL Classified as {}, Confidence: {:.4f}%".format(url_class, conf * 100))
+        except:
+            self.labelVariable.set("Not a valid URL")
         self.entry.focus_set()
         self.entry.selection_range(0, Tkinter.END)
 
